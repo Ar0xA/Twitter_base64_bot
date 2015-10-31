@@ -1,5 +1,6 @@
-import twitter, time, sys, json, base64, re, string, os.path, math,traceback
+import twitter, time, sys, json, base64, re, string, os.path, math,traceback, requests, urllib
 
+#twitter
 #consumer key
 CK=""
 #consumer secret
@@ -12,6 +13,9 @@ ATS=""
 BSN="@base64bot"
 #mentionidfile
 MFILE="mentionID.txt"
+
+#pastebin API key
+PBAK=""
 
 def encodeB64(editText):
     return base64.b64encode(editText)
@@ -70,6 +74,55 @@ def getSinceID():
             f.close()
     return sinceID
 
+#make pastebin post, return the URL created
+def makePastebinPost(b64Result, mentionName):
+    postTitle= urllib.quote_plus("base64bot for " + mentionName)
+#    postString = "api_option=paste&api_paste_private=0&api_paste_name=%s&api_paste_expire_date=30M&api_dev_key=%s&api_paste_code=%s"  % (postTitle,PBAK, b64Result)
+    postString = {"api_option":"paste","api_paste_private":"0","api_paste_name":postTitle,"api_paste_expire_date":"10M","api_dev_key":PBAK,"api_paste_code":b64Result}
+    response = requests.post("http://pastebin.com/api/api_post.php", data=postString)
+    return response.text
+
+#pastebin URL handler
+def doTheURLDance(editText, mentionName, mentionID):
+    #pastebin urls cant contain anything BUT a URL
+    #basically a space means this needs to be 
+    #base64 encoded afterall
+    if editText.find(" ") > -1:
+        return False
+    #alright, since we are only interested in the RAW data, lets remove
+    #everything thats pastebin related
+    
+    #lets request the URL and see what happens
+    getInfo = requests.get(editText, allow_redirects=False)
+    #now location header will hold the URL we want  
+    if getInfo.status_code != 301:
+        print ("woops, that went wrong")
+    else:
+        locInfo = getInfo.headers['location']
+        getUrlID = locInfo[locInfo.rfind("/")+1:len(locInfo)]
+        getUrlDomain = locInfo[0:locInfo.rfind("/")]
+        if getUrlDomain == "https://pastebin.com" or getUrlDomain == "http://pastebin.com":
+            print("Its pastebin, go go go!")
+            rawPaste=requests.get("http://pastebin.com/raw.php?i=%s" %(getUrlID))
+            if rawPaste.status_code != 200:
+                print("well, that didnt work out. give up and try encode normally")
+
+            else:
+                result = rawPaste.text
+                #TODO: check if text or base64
+                
+                #if NOT base64, encode
+                #now to do our magicly magic
+                b64Result= base64.b64encode(result)
+                #and now, we create a new paste
+                #containing this data
+                pastebinURL =makePastebinPost(b64Result, mentionName)
+                if len(pastebinURL) > 1:
+                    tweetIt(pastebinURL,mentionName,mentionID)
+                    return True
+        else: #not pastebin, abort abort! abandon ship!
+            return False
+
 if __name__ == "__main__":
     api=do_auth()
 #lets wait for mentions
@@ -105,19 +158,28 @@ if __name__ == "__main__":
                     print ("alright, we need to do something with this!")
 	    	#first, lets fix the text
                     editText = mentionText.replace(BSN+" ","")
- 
-                #So, is this a base64 string?
-                #this is not foolproof, thats why workWithValid
-    		#requires an extra test to see if it really is base64 or not
-                    try: 
-                        decodeResult = base64.decodestring(editText)
-                        print("seems valid base64, lets try decode")
-                        workWithValid(decodeResult, mentionName, mentionID)
-                    except: #not valid base64, so lets encode
-                        traceback.print_exc()
-                        print ("seems invalid, lets try encode instead")
-                        encodedResult = encodeB64(editText)
-                        tweetIt(encodedResult, mentionName, mentionID)
+                
+                #first, if the first string is a pastebin URL
+		#we go there, and ignore the rest
+                    print editText
+                    weDone = False
+                    #does it start with http or https?
+                    if editText.startswith('http://') or editText.startswith('https://'):
+                        print ("we got a URL")
+                        weDone = doTheURLDance(editText, mentionName, mentionID)
+                    if not weDone:
+                        #So, is this a base64 string?
+                        #this is not foolproof, thats why workWithValid
+    		        #requires an extra test to see if it really is base64 or not
+                        try: 
+                            decodeResult = base64.decodestring(editText)
+                            print("seems valid base64, lets try decode")
+                            workWithValid(decodeResult, mentionName, mentionID)
+                        except: #not valid base64, so lets encode
+                            traceback.print_exc()
+                            print ("seems invalid, lets try encode instead")
+                            encodedResult = encodeB64(editText)
+                            tweetIt(encodedResult, mentionName, mentionID)
                 
                 #alright, it went all fine, lets update the since_id
                     sinceID=mentionID
