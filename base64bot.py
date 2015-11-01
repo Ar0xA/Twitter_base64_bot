@@ -14,7 +14,7 @@ BSN="@base64bot"
 #mentionidfile
 MFILE="mentionID.txt"
 
-#pastebin API key
+#pastebin
 PBAK=""
 
 def encodeB64(editText):
@@ -94,6 +94,7 @@ def doTheURLDance(editText, mentionName, mentionID):
     
     #lets request the URL and see what happens
     getInfo = requests.get(editText, allow_redirects=False)
+    print getInfo.headers
     #now location header will hold the URL we want  
     if getInfo.status_code != 301:
         print ("woops, that went wrong")
@@ -136,7 +137,7 @@ if __name__ == "__main__":
         mentions=""
         print ("Getting mentions")
         try:
-            mentions = api.GetMentions(5,sinceID,None,False,False,False)
+            mentions = api.GetMentions(20,sinceID,None,False,False,False)
         except:
             #bugger, prolly a timeout
             traceback.print_exc()
@@ -146,7 +147,7 @@ if __name__ == "__main__":
             for item in mentions:
                 mentionData=json.loads(str(item))
                 #print mentionData
-                mentionName=mentionData['user']['name']
+                mentionName=mentionData['user']['screen_name']
                 mentionText=mentionData['text']
                 mentionID=mentionData['id'] #we need this to update since_id lateron
                 print ("who tweeted us: %s " % mentionName)
