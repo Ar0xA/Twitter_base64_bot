@@ -12,3 +12,5 @@ Tweet:
 or
 
 @botname [pastebin URL]
+
+known issue: no decode base64 from pastebin yet.
